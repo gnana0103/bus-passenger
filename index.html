@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bus Passenger Dashboard</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"  
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>  
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(to right, #eef2f3, #dfe9f3);
+      margin: 0;
+      padding: 0;
+      text-align: center;
+      color: #333;
+    }
+    h2 {
+      color: #222;
+      margin-top: 20px;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      padding: 20px;
+      max-width: 1200px;
+      margin: auto;
+    }
+    .info-box {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      font-weight: 500;
+      transition: transform 0.2s ease;
+    }
+    .info-box:hover {
+      transform: scale(1.03);
+    }
+    #map {
+      height: 90vh;
+      width: 100%;
+      margin: 20px auto;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    canvas {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      margin: 20px auto;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      width: 90% !important;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 15px;
+      background: linear-gradient(90deg, #4CAF50, #2E7D32);
+      color: white;
+      font-size: 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: linear-gradient(90deg, #66BB6A, #388E3C);
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Bus Passenger Dashboard</h2>
+  
+  <!-- Info Cards -->
+  <div class="dashboard">
+    <div class="info-box">Total Seats: <span id="totalSeats">--</span></div>
+    <div class="info-box">Seats Occupied: <span id="seatsOccupied">--</span></div>
+    <div class="info-box">Standing: <span id="standing">--</span></div>
+    <div class="info-box">Total Passengers: <span id="totalPeople">--</span></div>
+  </div>
+  
+  <!-- Location Section -->
+  <h2>Bus Live Location</h2>
+  <button onclick="startDriver()">Start Driver Location</button>
+  <div id="map"></div>
+  
+  <!-- Charts Section -->
+  <h2>Daily Passenger Trend (Week 2)</h2>
+  <canvas id="dailyChart"></canvas>
+  
+  <h2>Week-to-Week Comparison</h2>
+  <canvas id="weeklyChart"></canvas>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"  
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <script type="module">
+    // ---------- Firebase SDK ----------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  
+    // ---------- Firebase Configuration ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyBhwutwUs4e7u0Mv6qgl7YWbGVcKEU-TEI",
+      authDomain: "bus-passengers.firebaseapp.com",
+      databaseURL: "https://bus-passengers-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "bus-passengers",
+      storageBucket: "bus-passengers.firebasestorage.app",
+      messagingSenderId: "438373107101",
+      appId: "1:438373107101:web:6e2d3411dcd46091f39b74"
+    };
+    const app = initializeApp(firebaseConfig); 
+    const db = getDatabase(app);
+  
+    const TOTAL_SEATS = 30;
+  
+    // ---------- Start Driver Location ----------
+    
+      window.startDriver = function () {
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition((position) => {
+      set(ref(db, "bus1/location"), {   
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      });
+      alert("Driver location started!");
+    }, (error) => alert("Please allow location access"), { enableHighAccuracy: true });
+  } else {
+    alert("Geolocation not supported by this device");
+  }
+};
+  
+    // ---------- Passenger Data ----------
+    const busRef = ref(db, "bus1");
+    onValue(busRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const totalPeople = data.totalPeople || 0;
+  
+      const seatsOccupied = Math.min(totalPeople, TOTAL_SEATS);
+      const standing = Math.max(totalPeople - TOTAL_SEATS, 0);
+  
+      document.getElementById("totalSeats").innerText = TOTAL_SEATS;
+      document.getElementById("totalPeople").innerText = totalPeople;
+      document.getElementById("seatsOccupied").innerText = seatsOccupied;
+      document.getElementById("standing").innerText = standing;
+    });
+  
+    // ---------- Map + Driver Location ----------
+    const map = L.map('map').setView([0, 0], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 25,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    const busMarker = L.marker([0, 0]).addTo(map).bindPopup('Bus Location');
+  
+    onValue(ref(db, "bus1/location"), (snapshot) => {
+      const location = snapshot.val() || { latitude: 0, longitude: 0 };
+      busMarker.setLatLng([location.latitude, location.longitude]);
+      map.setView([location.latitude, location.longitude], 15);
+    });
+  
+    // ---------- Charts ----------
+    const dailyChartCtx = document.getElementById("dailyChart").getContext("2d");
+    const dailyChart = new Chart(dailyChartCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          { label: "Stop A", data: [], borderColor: "#FF4C4C", fill: false },
+          { label: "Stop B", data: [], borderColor: "#4C6FFF", fill: false },
+          { label: "Stop C", data: [], borderColor: "#4CAF50", fill: false }
+        ]
+      }
+    });
+  
+    const weeklyChartCtx = document.getElementById("weeklyChart").getContext("2d");
+    const weeklyChart = new Chart(weeklyChartCtx, {
+      type: "bar",
+      data: {
+        labels: [],
+        datasets: [
+          { label: "Week 1", data: [], backgroundColor: "rgba(255,99,132,0.6)" },
+          { label: "Week 2", data: [], backgroundColor: "rgba(54,162,235,0.6)" }
+        ]
+      }
+    });
+  
+    // ---------- Daily Data ----------
+    onValue(ref(db, "bus1/dailyData"), (snapshot) => {
+      const daily = snapshot.val();
+      if (daily) {
+        const labels = Object.keys(daily);
+        dailyChart.data.labels = labels;
+        dailyChart.data.datasets[0].data = labels.map(day => daily[day].StopA);
+        dailyChart.data.datasets[1].data = labels.map(day => daily[day].StopB);
+        dailyChart.data.datasets[2].data = labels.map(day => daily[day].StopC);
+        dailyChart.update();
+      }
+    });
+  
+    // ---------- Weekly Data ----------
+    onValue(ref(db, "bus1/weeklyData"), (snapshot) => {
+      const weekly = snapshot.val();
+      if (weekly) {
+        const labels = Object.keys(weekly.Week1);
+        weeklyChart.data.labels = labels;
+        weeklyChart.data.datasets[0].data = labels.map(stop => weekly.Week1[stop]);
+        weeklyChart.data.datasets[1].data = labels.map(stop => weekly.Week2[stop]);
+        weeklyChart.update();
+      }
+    });
+  </script>
+  
+</body>
+</html>
